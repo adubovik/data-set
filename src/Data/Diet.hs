@@ -6,11 +6,15 @@
  , BangPatterns
  , TypeSynonymInstances
  , FlexibleInstances
+ , UndecidableInstances
  #-}
 
-module Main {-Data.Diet-} (
+-- Should turn UndecidableInstances on, because of some
+-- constraint kind related bug
+
+module Data.Diet (
  -- * Diet type
-   Diet       -- instance Eq,Ord,Show,Read,Data,Typeable
+   Diet       -- instance Eq,Ord,Show,Read,NFData
 
  -- * Diet constraint
  , DietC
@@ -109,7 +113,6 @@ module Main {-Data.Diet-} (
 import Prelude hiding (filter,foldl,foldr,null,map)
 import qualified Data.List as List
 import Data.Monoid (Monoid(..),(<>), Sum(..))
-import qualified Data.Foldable as Foldable
 import Control.DeepSeq (NFData(rnf))
 
 import Text.Read
@@ -129,9 +132,8 @@ m1 \\ m2 = difference m1 m2
 --------------------------------------------------------------------}
 -- | A set of values @a@.
 
-data Set a    = Bin !a !(Set a) !(Set a)
+data Diet a   = Bin !(a,a) !(Diet a) !(Diet a)
               | Tip
-type Diet a   = Set (a,a)
 type DietC a  = (Enum a, Ord a)
 
 instance DietC a => Monoid (Diet a) where
@@ -139,30 +141,27 @@ instance DietC a => Monoid (Diet a) where
     mappend = union
     mconcat = unions
 
-instance Foldable.Foldable Set where
-    fold t = go t
-      where go Tip = mempty
-            go (Bin k l r) = go l <> (k <> go r)
-    {-# INLINABLE fold #-}
-    foldMap f t = go t
-      where go Tip = mempty
-            go (Bin k l r) = go l <> (f k <> go r)
-    {-# INLINE foldMap #-}
+-- Alas, can't make instance (Foldable.Foldable Diet) because of
+-- Enum constraint. DatatypeContexts is depricated :(
 
-
+foldMapInterval :: Monoid m => ((a,a) -> m) -> Diet a -> m
+foldMapInterval f = go
+  where go Tip = mempty
+        go (Bin k l r) = go l <> (f k <> go r)
+{-# INLINE foldMapInterval #-}
 
 {--------------------------------------------------------------------
   Query
 --------------------------------------------------------------------}
 -- | /O(1)/. Is this the empty set?
-null :: Set a -> Bool
+null :: Diet a -> Bool
 null Tip      = True
 null (Bin {}) = False
 {-# INLINE null #-}
 
 -- | /O(n)/. The number of elements in the set.
 size :: DietC a => Diet a -> Int
-size = getSum . Foldable.foldMap isize
+size = getSum . foldMapInterval isize
   where
     isize (x,y) = Sum $ fromEnum y - fromEnum x + 1
     {-# INLINE isize #-}
@@ -188,12 +187,12 @@ notMember a = not . member a
 {--------------------------------------------------------------------
   Construction
 --------------------------------------------------------------------}
--- | /O(1)/. The empty set.
-empty  :: Set a
+-- | /O(1)/. The empty diet.
+empty  :: Diet a
 empty = Tip
 {-# INLINE empty #-}
 
--- | /O(1)/. Create a singleton set.
+-- | /O(1)/. Create a singleton diet.
 singleton :: a -> Diet a
 singleton x = Bin (x,x) Tip Tip
 {-# INLINE singleton #-}
@@ -364,7 +363,7 @@ unions = foldlStrict union empty
 union :: DietC a => Diet a -> Diet a -> Diet a
 union Tip t2  = t2
 union t1 Tip  = t1
-union t1 t2 = Foldable.foldl' (flip insertInterval) t1 t2
+union t1 t2 = foldlInterval' (flip insertInterval) t1 t2
 {-# INLINABLE union #-}
 
 {--------------------------------------------------------------------
@@ -375,23 +374,22 @@ union t1 t2 = Foldable.foldl' (flip insertInterval) t1 t2
 difference :: DietC a => Diet a -> Diet a -> Diet a
 difference Tip _   = Tip
 difference t1 Tip  = t1
-difference t1 t2   = Foldable.foldl' (flip deleteInterval) t1 t2
+difference t1 t2   = foldlInterval' (flip deleteInterval) t1 t2
 {-# INLINABLE difference #-}
 
 
 {--------------------------------------------------------------------
   Intersection
 --------------------------------------------------------------------}
--- | /O(n+m)/. The intersection of two sets.  The implementation uses an
--- efficient /hedge/ algorithm comparable with /hedge-union/.  Elements of the
--- result come from the first set, so for example
+-- | /O((n+m)*log(n+m))/. The intersection of two diets.  Elements of the
+-- result come from the first diet, so for example
 --
--- > import qualified Data.Set as S
+-- > import qualified Data.Diet as D
 -- > data AB = A | B deriving Show
 -- > instance Ord AB where compare _ _ = EQ
 -- > instance Eq AB where _ == _ = True
--- > main = print (S.singleton A `S.intersection` S.singleton B,
--- >               S.singleton B `S.intersection` S.singleton A)
+-- > main = print (D.singleton A `D.intersection` D.singleton B,
+-- >               D.singleton B `D.intersection` D.singleton A)
 --
 -- prints @(fromList [A],fromList [B])@.
 intersection :: DietC a => Diet a -> Diet a -> Diet a
@@ -615,7 +613,7 @@ instance (Read a, Ord a, Enum a) => Read (Diet a) where
   NFData
 --------------------------------------------------------------------}
 
-instance NFData a => NFData (Set a) where
+instance NFData a => NFData (Diet a) where
     rnf Tip         = ()
     rnf (Bin y l r) = rnf y `seq` rnf l `seq` rnf r
 
@@ -695,7 +693,7 @@ foldlStrict f = go
 --------------------------------------------------------------------}
 -- | /O(n)/. Show the tree that implements the set. The tree is shown
 -- in a compressed, hanging format.
-showTree :: Show a => Set a -> String
+showTree :: Show a => Diet a -> String
 showTree s
   = showTreeWith True False s
 
@@ -735,12 +733,12 @@ showTree s
 >    +--1
 
 -}
-showTreeWith :: Show a => Bool -> Bool -> Set a -> String
+showTreeWith :: Show a => Bool -> Bool -> Diet a -> String
 showTreeWith hang wide t
   | hang      = (showsTreeHang wide [] t) ""
   | otherwise = (showsTree wide [] [] t) ""
 
-showsTree :: Show a => Bool -> [String] -> [String] -> Set a -> ShowS
+showsTree :: Show a => Bool -> [String] -> [String] -> Diet a -> ShowS
 showsTree wide lbars rbars t
   = case t of
       Tip -> showsBars lbars . showString "|\n"
@@ -753,7 +751,7 @@ showsTree wide lbars rbars t
              showWide wide lbars .
              showsTree wide (withEmpty lbars) (withBar lbars) l
 
-showsTreeHang :: Show a => Bool -> [String] -> Set a -> ShowS
+showsTreeHang :: Show a => Bool -> [String] -> Diet a -> ShowS
 showsTreeHang wide bars t
   = case t of
       Tip -> showsBars bars . showString "|\n"
