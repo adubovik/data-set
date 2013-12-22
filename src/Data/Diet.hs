@@ -15,6 +15,7 @@
 module Data.Diet (
  -- * Diet type
    Diet       -- instance Eq,Ord,Show,Read,NFData
+ , Set        -- type synonym of Diet
 
  -- * Diet constraint
  , DietC
@@ -134,6 +135,7 @@ m1 \\ m2 = difference m1 m2
 
 data Diet a   = Bin !(a,a) !(Diet a) !(Diet a)
               | Tip
+type Set      = Diet
 type DietC a  = (Enum a, Ord a)
 
 instance DietC a => Monoid (Diet a) where
