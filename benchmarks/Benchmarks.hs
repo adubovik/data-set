@@ -16,7 +16,7 @@ import System.Random (mkStdGen)
 import System.Random.Shuffle (shuffle')
 import qualified Data.Set as ST
 import qualified Data.IntSet as IS
-import qualified Data.Diet as DI
+import qualified Data.Set.Diet as DI
 import qualified Data.BitSet as BS
 
 data B = forall a. NFData a => B a
@@ -205,5 +205,5 @@ notMembers SetInterface{..} xs bs = all (\x -> notMember x bs) xs
 inserts :: DI.DietC a => SetInterface f a -> [a] -> f -> f
 inserts SetInterface{..} xs bs0 = foldl' (\bs x -> insert x bs) bs0 xs
 
-deletes :: DI.DietC a => SetInterface f a -> [a] -> f -> f
-deletes SetInterface{..} xs bs0 = foldl' (\bs x -> delete x bs) bs0 xs
+_deletes :: DI.DietC a => SetInterface f a -> [a] -> f -> f
+_deletes SetInterface{..} xs bs0 = foldl' (\bs x -> delete x bs) bs0 xs

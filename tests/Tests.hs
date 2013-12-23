@@ -4,8 +4,8 @@
 
 module Main(main) where
 
-import Data.Diet(Diet)
-import qualified Data.Diet as D
+import Data.Set.Diet(Diet)
+import qualified Data.Set.Diet as DI
 
 import Data.List
 import Data.Monoid(mempty)
@@ -26,33 +26,33 @@ instance Arbitrary RInt where
 type Carry = RInt
 
 equalSets :: [Carry] -> Diet Carry -> Bool
-equalSets ls ds = 
-  all (`D.member` ds) ls &&
-  all (`elem` ls) (D.toList ds) &&
-  D.valid ds
+equalSets ls ds =
+  all (`DI.member` ds) ls &&
+  all (`elem` ls) (DI.toList ds) &&
+  DI.valid ds
 
 propConstruction :: [Carry] -> Bool
 propConstruction xs =
   equalSets xs d && xs' == xs''
   where
-    d    = D.fromList xs
-    xs'  = D.toAscList d
+    d    = DI.fromList xs
+    xs'  = DI.toAscList d
     xs'' = nub $ sort xs
 
 propIntersection :: [Carry] -> Bool
 propIntersection xs =
   equalSets i' i &&
-  all (`D.member` i) (l `intersect` r) &&
-  all (`D.notMember` i) (dl `union` dr)
-  where    
+  all (`DI.member` i) (l `intersect` r) &&
+  all (`DI.notMember` i) (dl `union` dr)
+  where
     n = length xs
     (l, r) = splitAt (n `div` 2) $ nub xs
 
     dl = l \\ r
     dr = r \\ l
 
-    i' = l `intersect` r 
-    i = (D.fromList l) `D.intersection` (D.fromList r)
+    i' = l `intersect` r
+    i = (DI.fromList l) `DI.intersection` (DI.fromList r)
 
 propUnion :: [Carry] -> Bool
 propUnion xs = equalSets u i
@@ -61,7 +61,7 @@ propUnion xs = equalSets u i
     (l, r) = splitAt (n `div` 2) $ nub xs
 
     i :: Diet Carry
-    i = (D.fromList l) `D.union` (D.fromList r)
+    i = (DI.fromList l) `DI.union` (DI.fromList r)
 
     u = l `union` r
 
@@ -73,7 +73,7 @@ propDifference xs = equalSets l l'
     u = l `union` r
 
     l' :: Diet Carry
-    l' = (D.fromList u) `D.difference` (D.fromList r)
+    l' = (DI.fromList u) `DI.difference` (DI.fromList r)
 
 main :: IO ()
 main = defaultMain tests
@@ -82,7 +82,7 @@ main = defaultMain tests
     tests = [ testGroup "Data.Diet" testDiet ]
 
     testOpt = mempty { topt_maximum_generated_tests = Just 10000 }
-         
+
     testDiet :: [Test]
     testDiet =
       map (plusTestOptions testOpt)

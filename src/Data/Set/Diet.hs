@@ -12,7 +12,7 @@
 -- Should turn UndecidableInstances on, because of some
 -- constraint kind related bug
 
-module Data.Diet (
+module Data.Set.Diet (
  -- * Diet type
    Diet       -- instance Eq,Ord,Show,Read,NFData
  , Set        -- type synonym of Diet

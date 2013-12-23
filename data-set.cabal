@@ -1,0 +1,57 @@
+Name:                 data-set
+Version:              0.0.1
+Synopsis:             A few more implementations of set ADT.
+Description:
+  Data.Set.Diet provides Discrete Interval Encoding Tree implementation.
+  Look at http://web.engr.oregonstate.edu/~erwig/diet/ for reference.
+Category:             Data Structures
+License:              MIT
+License-file:         LICENSE
+Data-files:           CHANGES
+Author:               Anton Dubovik <anton.dubovik@gmail.com>
+Maintainer:           anton.dubovik@gmail.com
+Stability:            Experimental
+Cabal-Version:        >= 1.16
+Build-type:           Simple
+Tested-with:          GHC >= 7.4.1
+
+Library
+  Hs-source-dirs:     src
+  Ghc-options:        -Wall -fno-warn-orphans
+  Default-language:   Haskell2010
+
+  Build-depends:      base
+                    , deepseq
+
+  Exposed-modules:    Data.Set.Diet
+
+Test-suite data-set-tests
+  Hs-source-dirs:     tests
+  Ghc-options:        -Wall -Werror -O2
+  Default-language:   Haskell2010
+
+  Type:               exitcode-stdio-1.0
+  Main-is:            Tests.hs
+
+  Build-depends:      base
+                    , QuickCheck
+                    , test-framework
+                    , test-framework-quickcheck2
+                    , data-set
+
+Benchmark data-set-benchmarks
+  Hs-source-dirs:     benchmarks
+  Ghc-options:        -Wall -Werror -O2
+  Default-language:   Haskell2010
+
+  Type:               exitcode-stdio-1.0
+  Main-is:            Benchmarks.hs
+
+  Build-depends:      base
+                    , deepseq
+                    , criterion
+                    , containers
+                    , random
+                    , random-shuffle
+                    , bitset                      >= 1.4.7
+                    , data-set
