@@ -37,22 +37,20 @@ data BenchData f a = BenchData
   , title :: String
   }
 
-data BenchConfig f a = BenchConfig
+data SetInterface f a = SetInterface
   { fromList :: [a] -> f
   , toList :: f -> [a]
   , empty :: f
   , singleton :: a -> f
-  -- , inserts, deletes :: [a] -> f -> f
   , insert, delete :: a -> f -> f
   , notMember, member :: a -> f -> Bool
-  -- , notMembers, members :: [a] -> f -> Bool
   , union, intersection, difference :: f -> f -> f
   , mapc :: (a -> a) -> f -> f
   , confName :: String
   }
 
-dietCfg :: DI.DietC a => BenchConfig (DI.Set a) a
-dietCfg = BenchConfig
+dietI :: DI.DietC a => SetInterface (DI.Set a) a
+dietI = SetInterface
   { fromList     = DI.fromList
   , toList       = DI.toList
   , empty        = DI.empty
@@ -68,8 +66,8 @@ dietCfg = BenchConfig
   , confName     = "Data.Diet"
   }
 
-setCfg :: Ord a => BenchConfig (ST.Set a) a
-setCfg = BenchConfig
+setI :: Ord a => SetInterface (ST.Set a) a
+setI = SetInterface
   { fromList     = ST.fromList
   , toList       = ST.toList
   , empty        = ST.empty
@@ -85,8 +83,8 @@ setCfg = BenchConfig
   , confName     = "Data.Set"
   }
 
-intsetCfg :: BenchConfig IS.IntSet Int
-intsetCfg = BenchConfig
+intSetI :: SetInterface IS.IntSet Int
+intSetI = SetInterface
   { fromList     = IS.fromList
   , toList       = IS.toList
   , empty        = IS.empty
@@ -102,8 +100,8 @@ intsetCfg = BenchConfig
   , confName     = "Data.IntSet"
   }
 
-bitsetCfg :: BenchConfig (BS.BitSet Int) Int
-bitsetCfg = BenchConfig
+bitSetI :: SetInterface (BS.BitSet Int) Int
+bitSetI = SetInterface
   { fromList     = BS.fromList
   , toList       = BS.toList
   , empty        = BS.empty
@@ -119,9 +117,8 @@ bitsetCfg = BenchConfig
   , confName     = "Data.BitSet"
   }
 
-
-mkBench :: BenchConfig f Int -> BenchData f Int -> Benchmark
-mkBench b@BenchConfig{..} BenchData{..} =
+mkBench :: SetInterface f Int -> BenchData f Int -> Benchmark
+mkBench b@SetInterface{..} BenchData{..} =
   bgroup (confName ++ "/" ++ title)
   [ bench "fromList"     (whnf fromList bigRnd)
   , bench "toList"       (whnf toList big)
@@ -154,7 +151,7 @@ main = do
       eSparseSmall = map (*3) eSolidSmall
 
   let r   = mkStdGen 42
-      bdSparse BenchConfig{..} = BenchData
+      bdSparse SetInterface{..} = BenchData
         { small    = fromList eSparseSmall
         , big      = fromList eSparseBig
         , smallRnd = shuffle' eSparseBig n r
@@ -163,7 +160,7 @@ main = do
         , bigSize  = n
         }
 
-      bdSolid BenchConfig{..} = BenchData
+      bdSolid SetInterface{..} = BenchData
         { small    = fromList eSolidSmall
         , big      = fromList eSolidBig
         , smallRnd = shuffle' eSolidBig n r
@@ -172,41 +169,41 @@ main = do
         , bigSize  = n
         }
 
-  let dietSolid  = bdSolid dietCfg
-      dietSparse = bdSparse dietCfg
-      setSolid   = bdSolid setCfg
-      setSparse  = bdSparse setCfg
-      intsetSolid = bdSolid intsetCfg
-      intsetSparse = bdSparse intsetCfg
-      bitsetSolid = bdSolid bitsetCfg
-      bitsetSparse = bdSparse bitsetCfg
+  let dietSolid    = bdSolid dietI
+      dietSparse   = bdSparse dietI
+      setSolid     = bdSolid setI
+      setSparse    = bdSparse setI
+      intSetSolid  = bdSolid intSetI
+      intSetSparse = bdSparse intSetI
+      bitSetSolid  = bdSolid bitSetI
+      bitSetSparse = bdSparse bitSetI
 
 
-  return $ rnf [B dietSolid, B dietSparse,
-                B setSolid, B setSparse,
-                B intsetSolid, B intsetSparse,
-                B bitsetSolid, B bitsetSparse]
+  return $ rnf [B dietSolid   , B dietSparse,
+                B setSolid    , B setSparse,
+                B intSetSolid , B intSetSparse,
+                B bitSetSolid , B bitSetSparse]
 
   defaultMain
-    [ mkBench setCfg setSparse
-    , mkBench intsetCfg intsetSparse
-    , mkBench bitsetCfg bitsetSparse
-    , mkBench dietCfg dietSparse
+    [ mkBench setI setSparse
+    , mkBench intSetI intSetSparse
+    , mkBench bitSetI bitSetSparse
+    , mkBench dietI dietSparse
 
-    --, mkBench setCfg setSolid
-    --, mkBench intsetCfg intsetSolid
-    , mkBench bitsetCfg bitsetSolid
-    , mkBench dietCfg dietSolid
+    --, mkBench setI setSolid
+    --, mkBench intSetI intSetSolid
+    , mkBench bitSetI bitSetSolid
+    , mkBench dietI dietSolid
     ]
 
-members :: DI.DietC a => BenchConfig f a -> [a] -> f -> Bool
-members BenchConfig{..} xs bs = all (\x -> member x bs) xs
+members :: DI.DietC a => SetInterface f a -> [a] -> f -> Bool
+members SetInterface{..} xs bs = all (\x -> member x bs) xs
 
-notMembers :: DI.DietC a => BenchConfig f a -> [a] -> f -> Bool
-notMembers BenchConfig{..} xs bs = all (\x -> notMember x bs) xs
+notMembers :: DI.DietC a => SetInterface f a -> [a] -> f -> Bool
+notMembers SetInterface{..} xs bs = all (\x -> notMember x bs) xs
 
-inserts :: DI.DietC a => BenchConfig f a -> [a] -> f -> f
-inserts BenchConfig{..} xs bs0 = foldl' (\bs x -> insert x bs) bs0 xs
+inserts :: DI.DietC a => SetInterface f a -> [a] -> f -> f
+inserts SetInterface{..} xs bs0 = foldl' (\bs x -> insert x bs) bs0 xs
 
-deletes :: DI.DietC a => BenchConfig f a -> [a] -> f -> f
-deletes BenchConfig{..} xs bs0 = foldl' (\bs x -> delete x bs) bs0 xs
+deletes :: DI.DietC a => SetInterface f a -> [a] -> f -> f
+deletes SetInterface{..} xs bs0 = foldl' (\bs x -> delete x bs) bs0 xs
