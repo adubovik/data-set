@@ -22,8 +22,12 @@ Library
 
   Build-depends:      base
                     , deepseq
+                    , containers
+                    , bitset                      >= 1.4.7
 
   Exposed-modules:    Data.Set.Diet
+                    , Data.Set.WordBitSet
+                    , Data.Set.SetInterface
 
 Test-suite data-set-tests
   Hs-source-dirs:     tests
@@ -37,6 +41,7 @@ Test-suite data-set-tests
                     , QuickCheck
                     , test-framework
                     , test-framework-quickcheck2
+                    , bitset                      >= 1.4.7
                     , data-set
 
 Benchmark data-set-benchmarks

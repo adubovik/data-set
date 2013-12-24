@@ -7,9 +7,6 @@
 
 module Main(main) where
 
-import Data.Set.Diet(Diet)
-import qualified Data.Set.Diet as DI
-
 import Data.Set.SetInterface
 
 import qualified Data.List as List
@@ -40,10 +37,8 @@ equalSets SetInterface{..} ls ds =
   valid ds
 
 propConstruction :: SetInterface f Int -> [Carry] -> Bool
-propConstruction it@SetInterface{..} (toInt -> xs) = equalSets it xs d
-  where
-    d    = fromList xs
-    xs'  = toList d
+propConstruction it@SetInterface{..} (toInt -> xs) =
+  equalSets it xs (fromList xs)
 
 propIntersection :: SetInterface f Int -> [Carry] -> Bool
 propIntersection it@SetInterface{..} (toInt -> xs) =
