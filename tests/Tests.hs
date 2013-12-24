@@ -1,5 +1,8 @@
 {-# language
    GeneralizedNewtypeDeriving
+ , RecordWildCards
+ , ConstraintKinds
+ , ViewPatterns
  #-}
 
 module Main(main) where
@@ -7,7 +10,9 @@ module Main(main) where
 import Data.Set.Diet(Diet)
 import qualified Data.Set.Diet as DI
 
-import Data.List
+import Data.Set.SetInterface
+
+import qualified Data.List as List
 import Data.Monoid(mempty)
 import Test.QuickCheck
 import Test.Framework (Test, testGroup, defaultMain, plusTestOptions)
@@ -21,73 +26,82 @@ instance Show RInt where
   show = show . unRI
 
 instance Arbitrary RInt where
-  arbitrary = RI `fmap` choose (1,50)
+  arbitrary = RI `fmap` choose (1,5000)
 
 type Carry = RInt
 
-equalSets :: [Carry] -> Diet Carry -> Bool
-equalSets ls ds =
-  all (`DI.member` ds) ls &&
-  all (`elem` ls) (DI.toList ds) &&
-  DI.valid ds
+toInt :: [Carry] -> [Int]
+toInt = fmap unRI
 
-propConstruction :: [Carry] -> Bool
-propConstruction xs =
-  equalSets xs d && xs' == xs''
+equalSets :: Eq a => SetInterface f a -> [a] -> f -> Bool
+equalSets SetInterface{..} ls ds =
+  all (`member` ds) ls &&
+  all (`List.elem` ls) (toList ds) &&
+  valid ds
+
+propConstruction :: SetInterface f Int -> [Carry] -> Bool
+propConstruction it@SetInterface{..} (toInt -> xs) = equalSets it xs d
   where
-    d    = DI.fromList xs
-    xs'  = DI.toAscList d
-    xs'' = nub $ sort xs
+    d    = fromList xs
+    xs'  = toList d
 
-propIntersection :: [Carry] -> Bool
-propIntersection xs =
-  equalSets i' i &&
-  all (`DI.member` i) (l `intersect` r) &&
-  all (`DI.notMember` i) (dl `union` dr)
-  where
-    n = length xs
-    (l, r) = splitAt (n `div` 2) $ nub xs
-
-    dl = l \\ r
-    dr = r \\ l
-
-    i' = l `intersect` r
-    i = (DI.fromList l) `DI.intersection` (DI.fromList r)
-
-propUnion :: [Carry] -> Bool
-propUnion xs = equalSets u i
+propIntersection :: SetInterface f Int -> [Carry] -> Bool
+propIntersection it@SetInterface{..} (toInt -> xs) =
+  equalSets it i' i &&
+  all (`member` i) (l `List.intersect` r) &&
+  all (`notMember` i) (dl `List.union` dr)
   where
     n = length xs
-    (l, r) = splitAt (n `div` 2) $ nub xs
+    (l, r) = splitAt (n `div` 2) $ List.nub xs
 
-    i :: Diet Carry
-    i = (DI.fromList l) `DI.union` (DI.fromList r)
+    dl = l List.\\ r
+    dr = r List.\\ l
 
-    u = l `union` r
+    i' = l `List.intersect` r
+    i = (fromList l) `intersection` (fromList r)
 
-propDifference :: [Carry] -> Bool
-propDifference xs = equalSets l l'
+propUnion :: SetInterface f Int -> [Carry] -> Bool
+propUnion it@SetInterface{..} (toInt -> xs) = equalSets it u i
   where
     n = length xs
-    (l, r) = splitAt (n `div` 2) $ nub xs
-    u = l `union` r
+    (l, r) = splitAt (n `div` 2) $ List.nub xs
 
-    l' :: Diet Carry
-    l' = (DI.fromList u) `DI.difference` (DI.fromList r)
+    i = (fromList l) `union` (fromList r)
+    u = l `List.union` r
+
+propDifference :: SetInterface f Int -> [Carry] -> Bool
+propDifference it@SetInterface{..} (toInt -> xs) = equalSets it l l'
+  where
+    n = length xs
+    (l, r) = splitAt (n `div` 2) $ List.nub xs
+    u = l `List.union` r
+
+    l' = (fromList u) `difference` (fromList r)
 
 main :: IO ()
 main = defaultMain tests
   where
     tests :: [Test]
-    tests = [ testGroup "Data.Diet" testDiet ]
+    tests = [ testGroup "Data.Set.Diet"       testDiet
+            , testGroup "Data.Set.WordBitSet" testWordBitSet
+            ]
 
     testOpt = mempty { topt_maximum_generated_tests = Just 10000 }
 
     testDiet :: [Test]
     testDiet =
       map (plusTestOptions testOpt)
-      [ testProperty "test intersection" propIntersection
-      , testProperty "test construction" propConstruction
-      , testProperty "test difference" propDifference
-      , testProperty "test union" propUnion
+      [ testProperty "test intersection" (propIntersection dietInterface)
+      , testProperty "test construction" (propConstruction dietInterface)
+      , testProperty "test difference"   (propDifference   dietInterface)
+      , testProperty "test union"        (propUnion        dietInterface)
+      ]
+
+    testWordBitSet :: [Test]
+    testWordBitSet =
+      map (plusTestOptions testOpt)
+      [ testProperty "test intersection" (propIntersection wordBitSetInterface)
+      , testProperty "test construction" (propConstruction wordBitSetInterface)
+      , testProperty "test difference"   (propDifference   wordBitSetInterface)
+      , testProperty "test union"        (propUnion        wordBitSetInterface)
       ]
