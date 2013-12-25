@@ -48,8 +48,7 @@ mkBench it@SetInterface{..} BenchData{..} =
   , bench "insert asc"   (whnf (inserts it bigAsc) empty)
   , bench "insert rnd"   (whnf (inserts it bigRnd) empty)
 
-    -- Weak spot of Diet in solid input case - to many split should be performed
-    -- I suppose
+    -- Weak spot of Diet in solid input case - to many split should be performed I suppose
   , bench "delete"       (whnf (deletes it bigRnd) big)
   , bench "notMember"    (whnf (notMembers it bigRnd) big)
   , bench "member"       (whnf (members it bigRnd) big)
@@ -120,9 +119,8 @@ main = do
     -- , mkBench dietInterface dietSparse
     -- , mkBench wordBitSetInterface wordBitSetSparse
 
-    --, mkBench setInterface setSolid
+    -- , mkBench setInterface setSolid
       mkBench intSetInterface intSetSolid
-
     -- , mkBench bitSetInterface bitSetSolid
     -- , mkBench dietInterface dietSolid
     , mkBench wordBitSetInterface wordBitSetSolid

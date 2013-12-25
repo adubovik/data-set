@@ -61,9 +61,11 @@ instance NFData WSet where
 zero, ones :: Carry
 zero = 0
 ones = complement zero
+{-# INLINE ones #-}
 
 nbits :: Int
 nbits = bitSize (0 :: Carry)
+{-# INLINE nbits #-}
 
 ambientBit :: Bool
 ambientBit = False
@@ -74,36 +76,40 @@ ambientConst = Const ambientBit
 constToCarry :: Bool -> Carry
 constToCarry True  = ones
 constToCarry False = zero
+{-# INLINE constToCarry #-}
 
 -- Bit manipulation --
 
 -- TODO: optimize via bit operations!
 getPathPair :: Int -> (Int, Int)
 getPathPair = (`quotRem` nbits)
+{-# INLINE getPathPair #-}
 
 getTreeIdx :: Int -> Int
 getTreeIdx = (`quot` nbits)
+{-# INLINE getTreeIdx #-}
 
 _getWordIdx :: Int -> Int
 _getWordIdx = (`rem` nbits)
+{-# INLINE _getWordIdx #-}
 
 d2, u2 :: Bits a => a -> a
 d2 = (`shiftR` 1)
 u2 = (`shiftL` 1)
+{-# INLINE u2 #-}
+{-# INLINE d2 #-}
 
-foldlBits :: (Show i, Num i, Num b, Bits b) =>
+foldlBits :: (Num i, Bits b) =>
              i -> (a -> i -> a) -> a -> b -> a
-foldlBits i f = go i
-  where
-    -- TODO: use (map (testBit bits) [0..nbits-1]) ?
-    go idx acc bits
-      -- TODO: (popCount bits == 0) => (no need for Num constraint) ?
-      | bits == 0      = acc
-      | testBit bits 0 = go (idx+1) (f acc idx) (d2 bits)
-      | otherwise      = go (idx+1)    acc      (d2 bits)
+foldlBits idx f acc bits = snd $ List.foldl' (\(ix,a) bi ->
+                                     if testBit bits bi
+                                     then (ix+1, f a ix)
+                                     else (ix+1,   a))
+                           (idx, acc) [0..nbits-1]
+{-# INLINE foldlBits #-}
 
-_toListBits :: Show b => (Num a, Bits a, Num b) => b -> a -> [b]
-_toListBits idx = foldlBits idx (flip (:)) []
+_toListBits :: (Bits a, Num b) => b -> a -> [b]
+_toListBits idx = List.reverse . foldlBits idx (flip (:)) []
 
 -- Utilities --
 
@@ -111,14 +117,17 @@ tip :: Carry -> WSet
 tip x | x == zero = Const False
       | x == ones = Const True
       | otherwise = Tip x
+{-# INLINE tip #-}
 
 bin :: WSet -> WSet -> WSet
 bin (Const x) (Const y) | x == y = Const x
 bin l r = Bin l r
+{-# INLINE bin #-}
 
 constToTip :: Bool -> WSet
 constToTip True  = Tip ones
 constToTip False = Tip zero
+{-# INLINE constToTip #-}
 
 increaseUpTo :: Int -> Set -> Set
 increaseUpTo e (WordBitSet c ws) = go c ws
@@ -128,6 +137,7 @@ increaseUpTo e (WordBitSet c ws) = go c ws
       | otherwise    = WordBitSet curr wset
 
     goal = getTreeIdx e
+{-# INLINE increaseUpTo #-}
 
 increaseUpToSize :: Int -> Set -> Set
 increaseUpToSize c' (WordBitSet c ws) = go c ws
@@ -135,14 +145,16 @@ increaseUpToSize c' (WordBitSet c ws) = go c ws
     go curr wset
       | curr < c' = go (u2 curr) (bin wset ambientConst)
       | otherwise = WordBitSet curr wset
+{-# INLINE increaseUpToSize #-}
 
 decrease :: Set -> Set
 decrease (WordBitSet ca ws) = go ca ws
   where
     -- Could only shrink in size toward zero
     go i (Bin l (Const c)) | c == ambientBit = go (d2 i) l
-    go _ (Const c) | c == ambientBit = empty
+    go _ (Const c)         | c == ambientBit = empty
     go i wset = WordBitSet i wset
+{-# INLINE decrease #-}
 
 -- Meat --
 
@@ -150,10 +162,12 @@ empty :: Set
 empty = WordBitSet 1 ambientConst
 
 null :: Set -> Bool
-null = (==empty)
+null x = x==empty
+{-# INLINE null #-}
 
 singleton :: Int -> Set
-singleton = flip insert empty
+singleton x = insert x empty
+{-# INLINE singleton #-}
 
 -- TODO: get rid of it
 intro :: Int -> Set -> a -> (Int -> Int -> WSet -> a) -> a
@@ -162,6 +176,7 @@ intro i (WordBitSet c ws) def f
   | otherwise = f wi ti ws
     where
       (ti, wi) = getPathPair i
+{-# INLINE intro #-}
 
 -- TODO: simplify
 member :: Int -> Set -> Bool
@@ -170,9 +185,8 @@ member i s@(WordBitSet capacity _) = intro i s ambientBit wrap
     wrap wordIdx treeIdx = go initBitIdx
       where
         -- TODO: something with this
-        initBitIdx = popCount (capacity - 1)
+        initBitIdx = {-# SCC "member.popCount" #-} popCount (capacity - 1)
 
-        go bitIdx _ | bitIdx < 0 = error "member.go : bitIdx < 0"
         go bitIdx (Bin l r)
           | testBit treeIdx bitIdx' = go bitIdx' r
           | otherwise               = go bitIdx' l
@@ -183,6 +197,7 @@ member i s@(WordBitSet capacity _) = intro i s ambientBit wrap
 
 notMember :: Int -> Set -> Bool
 notMember i = not . (member i)
+{-# INLINE notMember #-}
 
 set :: Bool -> Int -> Set -> Set
 set val idx wbs@(WordBitSet capacity _)
@@ -196,10 +211,8 @@ set val idx wbs@(WordBitSet capacity _)
     WordBitSet capacity' ws' = increaseUpTo idx wbs
 
     (treeIdx, wordIdx) = getPathPair idx
-    initBitIdx = popCount (capacity' - 1)
+    initBitIdx = {-# SCC "set.popCount" #-} popCount (capacity' - 1)
 
-    -- set' bitIdx tree | trace (show (bitIdx, tree)) False = undefined
-    set' bitIdx _ | bitIdx < 0 = error "set' : bitIdx < 0"
     set' bitIdx (Bin l r)
       | testBit treeIdx bitIdx' = bin l (set' bitIdx' r)
       | otherwise               = bin   (set' bitIdx' l) r
@@ -214,12 +227,14 @@ set val idx wbs@(WordBitSet capacity _)
       | otherwise = tip (clearBit w wordIdx)
 
 delete :: Int -> Set -> Set
-delete = (decrease.) . set False
+delete i = decrease . set False i
+{-# INLINE delete #-}
 
 insert :: Int -> Set -> Set
-insert = set True
+insert i = set True i
+{-# INLINE insert #-}
 
-foldl :: Show i => Num i => Bool -> (a -> i -> a) -> a -> Set -> a
+foldl :: Num i => Bool -> (a -> i -> a) -> a -> Set -> a
 foldl val f initAcc (WordBitSet capacity wset) =
   go 0 capacity wset initAcc
   where
@@ -238,9 +253,11 @@ foldl val f initAcc (WordBitSet capacity wset) =
 
 fromList :: [Int] -> Set
 fromList = Foldable.foldl' (flip insert) empty
+{-# INLINE fromList #-}
 
-toList :: Show a => Num a => Set -> [a]
+toList :: Num a => Set -> [a]
 toList = List.reverse . foldl (not ambientBit) (flip (:)) []
+{-# INLINE toList #-}
 
 unionWith :: (Carry -> Carry -> Carry) -> Set -> Set -> Set
 unionWith f wbs1@(WordBitSet c1 _) wbs2@(WordBitSet c2 _) =
@@ -261,15 +278,19 @@ unionWith f wbs1@(WordBitSet c1 _) wbs2@(WordBitSet c2 _) =
 
 union :: Set -> Set -> Set
 union = unionWith (.|.)
+{-# INLINE union #-}
 
 intersection :: Set -> Set -> Set
 intersection = unionWith (.&.)
+{-# INLINE intersection #-}
 
 difference :: Set -> Set -> Set
 difference = unionWith (\x y -> x .&. (complement y))
+{-# INLINE difference #-}
 
 map :: (Int -> Int) -> Set -> Set
 map f = fromList . List.map f . toList
+{-# INLINE map #-}
 
 findMin :: Set -> Int
 findMin wbs@(WordBitSet capacity ws) = go 0 capacity ws
@@ -282,7 +303,7 @@ findMin wbs@(WordBitSet capacity ws) = go 0 capacity ws
         span'  = d2 span
         start' = start + span'
 
-    go start span (Const c)
+    go start _span (Const c)
       | c /= ambientBit = nbits * start
       | otherwise = error $ "findMin: empty tree: " ++ show wbs
 
