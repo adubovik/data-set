@@ -23,7 +23,7 @@ instance Show RInt where
   show = show . unRI
 
 instance Arbitrary RInt where
-  arbitrary = RI `fmap` choose (1,5000)
+  arbitrary = RI `fmap` choose (1,500)
 
 type Carry = RInt
 
@@ -38,7 +38,23 @@ equalSets SetInterface{..} ls ds =
 
 propConstruction :: SetInterface f Int -> [Carry] -> Bool
 propConstruction it@SetInterface{..} (toInt -> xs) =
-  equalSets it xs (fromList xs)
+  equalSets it xs   xs' &&
+  equalSets it xs'' xs'
+  where
+    xs'  = fromList xs
+    xs'' = toList xs'
+
+propConstruction' :: SetInterface f Int -> Carry -> Carry -> Bool
+propConstruction' it@SetInterface{..} (unRI -> a) (unRI -> b) = ls == ls'
+  where
+    ls  = [min a b .. max a b]
+    ls' = List.sort . toList . fromList $ ls
+
+propFindMin :: SetInterface f Int -> Carry -> Carry -> Bool
+propFindMin it@SetInterface{..} (unRI -> a) (unRI -> b) = mn == mn'
+  where
+    mn  = min a b
+    mn' = findMin . fromList $ [min a b .. max a b]
 
 propIntersection :: SetInterface f Int -> [Carry] -> Bool
 propIntersection it@SetInterface{..} (toInt -> xs) =
@@ -86,17 +102,21 @@ main = defaultMain tests
     testDiet :: [Test]
     testDiet =
       map (plusTestOptions testOpt)
-      [ testProperty "test intersection" (propIntersection dietInterface)
-      , testProperty "test construction" (propConstruction dietInterface)
-      , testProperty "test difference"   (propDifference   dietInterface)
-      , testProperty "test union"        (propUnion        dietInterface)
+      [ testProperty "test intersection"  (propIntersection  dietInterface)
+      , testProperty "test construction1" (propConstruction  dietInterface)
+      , testProperty "test construction2" (propConstruction' dietInterface)
+      , testProperty "test find minimum"  (propFindMin       dietInterface)
+      , testProperty "test difference"    (propDifference    dietInterface)
+      , testProperty "test union"         (propUnion         dietInterface)
       ]
 
     testWordBitSet :: [Test]
     testWordBitSet =
       map (plusTestOptions testOpt)
-      [ testProperty "test intersection" (propIntersection wordBitSetInterface)
-      , testProperty "test construction" (propConstruction wordBitSetInterface)
-      , testProperty "test difference"   (propDifference   wordBitSetInterface)
-      , testProperty "test union"        (propUnion        wordBitSetInterface)
+      [ testProperty "test intersection"  (propIntersection  wordBitSetInterface)
+      , testProperty "test construction1" (propConstruction  wordBitSetInterface)
+      , testProperty "test construction2" (propConstruction' wordBitSetInterface)
+      , testProperty "test find minimum"  (propFindMin       wordBitSetInterface)
+      , testProperty "test difference"    (propDifference    wordBitSetInterface)
+      , testProperty "test union"         (propUnion         wordBitSetInterface)
       ]

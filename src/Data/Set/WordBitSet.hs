@@ -11,6 +11,7 @@ module Data.Set.WordBitSet(
  , notMember
 
  , empty
+ , null
  , singleton
  , insert
  , delete
@@ -25,9 +26,11 @@ module Data.Set.WordBitSet(
 
  , toList
  , fromList
+
+ , findMin
 ) where
 
-import Prelude hiding (foldl, map, span)
+import Prelude hiding (foldl, map, span, null)
 import Data.Word(Word64)
 import Data.Bits
 import qualified Data.Foldable as Foldable
@@ -121,7 +124,7 @@ increaseUpTo :: Int -> Set -> Set
 increaseUpTo e (WordBitSet c ws) = go c ws
   where
     go curr wset
-      | curr <= goal = go (u2 curr) (Bin wset ambientConst)
+      | curr <= goal = go (u2 curr) (bin wset ambientConst)
       | otherwise    = WordBitSet curr wset
 
     goal = getTreeIdx e
@@ -130,7 +133,7 @@ increaseUpToSize :: Int -> Set -> Set
 increaseUpToSize c' (WordBitSet c ws) = go c ws
   where
     go curr wset
-      | curr < c' = go (u2 curr) (Bin wset ambientConst)
+      | curr < c' = go (u2 curr) (bin wset ambientConst)
       | otherwise = WordBitSet curr wset
 
 decrease :: Set -> Set
@@ -138,12 +141,16 @@ decrease (WordBitSet ca ws) = go ca ws
   where
     -- Could only shrink in size toward zero
     go i (Bin l (Const c)) | c == ambientBit = go (d2 i) l
+    go _ (Const c) | c == ambientBit = empty
     go i wset = WordBitSet i wset
 
 -- Meat --
 
 empty :: Set
 empty = WordBitSet 1 ambientConst
+
+null :: Set -> Bool
+null = (==empty)
 
 singleton :: Int -> Set
 singleton = flip insert empty
@@ -263,3 +270,24 @@ difference = unionWith (\x y -> x .&. (complement y))
 
 map :: (Int -> Int) -> Set -> Set
 map f = fromList . List.map f . toList
+
+findMin :: Set -> Int
+findMin wbs@(WordBitSet capacity ws) = go 0 capacity ws
+  where
+    go start span (Bin l r) =
+      case l of
+        Const c | c == ambientBit -> go start' span' r
+        _ ->  go start span' l
+      where
+        span'  = d2 span
+        start' = start + span'
+
+    go start span (Const c)
+      | c /= ambientBit = nbits * start
+      | otherwise = error $ "findMin: empty tree: " ++ show wbs
+
+    go start _span (Tip w)
+      | w /= 0 = nbits * start + firstBit w
+      | otherwise = error $ "findMin: inconsistent tree: " ++ show wbs
+
+    firstBit w = popCount (w `xor` (w - 1)) - 1

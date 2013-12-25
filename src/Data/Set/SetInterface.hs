@@ -27,6 +27,7 @@ data SetInterface f a = SetInterface
   , union, intersection, difference :: f -> f -> f
   , mapc :: (a -> a) -> f -> f
   , valid :: f -> Bool
+  , findMin :: f -> a
   , confName :: String
   }
 
@@ -45,6 +46,7 @@ wordBitSetInterface = SetInterface
   , difference   = WB.difference
   , mapc         = WB.map
   , valid        = const True
+  , findMin      = WB.findMin
   , confName     = "Data.Set.WordBitSet"
   }
 
@@ -63,6 +65,7 @@ dietInterface = SetInterface
   , difference   = DI.difference
   , mapc         = DI.map
   , valid        = DI.valid
+  , findMin      = DI.findMin
   , confName     = "Data.Set.Diet"
   }
 
@@ -81,6 +84,7 @@ setInterface = SetInterface
   , difference   = ST.difference
   , mapc         = ST.map
   , valid        = const True
+  , findMin      = ST.findMin
   , confName     = "Data.Set"
   }
 
@@ -99,6 +103,7 @@ intSetInterface = SetInterface
   , difference   = IS.difference
   , mapc         = IS.map
   , valid        = const True
+  , findMin      = IS.findMin
   , confName     = "Data.IntSet"
   }
 
@@ -117,5 +122,6 @@ bitSetInterface = SetInterface
   , difference   = BS.difference
   , mapc         = BS.map
   , valid        = const True
+  , findMin      = error "bitSetInterface: findMin isn't implemented."
   , confName     = "Data.BitSet"
   }
