@@ -114,13 +114,13 @@ main = do
 
   defaultMain
     [-- mkBench setInterface setSparse
-    -- , mkBench intSetInterface intSetSparse
+      mkBench intSetInterface intSetSparse
     -- , mkBench bitSetInterface bitSetSparse
     -- , mkBench dietInterface dietSparse
-    -- , mkBench wordBitSetInterface wordBitSetSparse
+    , mkBench wordBitSetInterface wordBitSetSparse
 
     -- , mkBench setInterface setSolid
-      mkBench intSetInterface intSetSolid
+    ,  mkBench intSetInterface intSetSolid
     -- , mkBench bitSetInterface bitSetSolid
     -- , mkBench dietInterface dietSolid
     , mkBench wordBitSetInterface wordBitSetSolid

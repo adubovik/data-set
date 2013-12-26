@@ -1,6 +1,7 @@
 {-# language
    MultiWayIf
  , NoMonomorphismRestriction
+ , BangPatterns
  #-}
 
 module Data.Set.WordBitSet(
@@ -22,7 +23,7 @@ module Data.Set.WordBitSet(
 
  , map
 
- , foldl
+ , foldl'
 
  , toList
  , fromList
@@ -67,12 +68,6 @@ nbits :: Int
 nbits = bitSize (0 :: Carry)
 {-# INLINE nbits #-}
 
-ambientBit :: Bool
-ambientBit = False
-
-ambientConst :: WSet
-ambientConst = Const ambientBit
-
 constToCarry :: Bool -> Carry
 constToCarry True  = ones
 constToCarry False = zero
@@ -101,11 +96,11 @@ u2 = (`shiftL` 1)
 
 foldlBits :: (Num i, Bits b) =>
              i -> (a -> i -> a) -> a -> b -> a
-foldlBits idx f acc bits = snd $ List.foldl' (\(ix,a) bi ->
+foldlBits !idx f !acc !bits = snd $ List.foldl' (\(!ix, !a) !bi ->
                                      if testBit bits bi
                                      then (ix+1, f a ix)
                                      else (ix+1,   a))
-                           (idx, acc) [0..nbits-1]
+                              (idx, acc) [0..nbits-1]
 {-# INLINE foldlBits #-}
 
 _toListBits :: (Bits a, Num b) => b -> a -> [b]
@@ -133,7 +128,7 @@ increaseUpTo :: Int -> Set -> Set
 increaseUpTo e (WordBitSet c ws) = go c ws
   where
     go curr wset
-      | curr <= goal = go (u2 curr) (bin wset ambientConst)
+      | curr <= goal = go (u2 curr) (bin wset (Const False))
       | otherwise    = WordBitSet curr wset
 
     goal = getTreeIdx e
@@ -143,7 +138,7 @@ increaseUpToSize :: Int -> Set -> Set
 increaseUpToSize c' (WordBitSet c ws) = go c ws
   where
     go curr wset
-      | curr < c' = go (u2 curr) (bin wset ambientConst)
+      | curr < c' = go (u2 curr) (bin wset (Const False))
       | otherwise = WordBitSet curr wset
 {-# INLINE increaseUpToSize #-}
 
@@ -151,15 +146,15 @@ decrease :: Set -> Set
 decrease (WordBitSet ca ws) = go ca ws
   where
     -- Could only shrink in size toward zero
-    go i (Bin l (Const c)) | c == ambientBit = go (d2 i) l
-    go _ (Const c)         | c == ambientBit = empty
+    go i (Bin l (Const False)) = go (d2 i) l
+    go _ (Const False) = empty
     go i wset = WordBitSet i wset
 {-# INLINE decrease #-}
 
 -- Meat --
 
 empty :: Set
-empty = WordBitSet 1 ambientConst
+empty = WordBitSet 1 (Const False)
 
 null :: Set -> Bool
 null x = x==empty
@@ -180,7 +175,7 @@ intro i (WordBitSet c ws) def f
 
 -- TODO: simplify
 member :: Int -> Set -> Bool
-member i s@(WordBitSet capacity _) = intro i s ambientBit wrap
+member i s@(WordBitSet capacity _) = intro i s False wrap
   where
     wrap wordIdx treeIdx = go initBitIdx
       where
@@ -202,7 +197,7 @@ notMember i = not . (member i)
 set :: Bool -> Int -> Set -> Set
 set val idx wbs@(WordBitSet capacity _)
   | treeIdx >= capacity
-  , val == ambientBit
+  , val == False
   = wbs
 
   | otherwise = WordBitSet capacity' (set' initBitIdx ws')
@@ -234,17 +229,17 @@ insert :: Int -> Set -> Set
 insert i = set True i
 {-# INLINE insert #-}
 
-foldl :: Num i => Bool -> (a -> i -> a) -> a -> Set -> a
-foldl val f initAcc (WordBitSet capacity wset) =
+foldl' :: Num i => (a -> i -> a) -> a -> Set -> a
+foldl' f !initAcc (WordBitSet capacity wset) =
   go 0 capacity wset initAcc
   where
     nb = fromIntegral nbits
 
-    go start span ws acc = case ws of
+    go !start !span !ws !acc = case ws of
       Bin l r -> go start' span' r $ go start span' l acc
       Const v -> if | span /= 1 -> go start' span' (Const v) $
                                      go start span' (Const v) acc
-                    | val == v  -> foldlBits (nb*start) f acc (constToCarry val)
+                    | v == True -> foldlBits (nb*start) f acc ones
                     | otherwise -> acc
       Tip w   -> foldlBits (nb*start) f acc w
       where
@@ -255,8 +250,9 @@ fromList :: [Int] -> Set
 fromList = Foldable.foldl' (flip insert) empty
 {-# INLINE fromList #-}
 
+-- TODO: Implement via foldr
 toList :: Num a => Set -> [a]
-toList = List.reverse . foldl (not ambientBit) (flip (:)) []
+toList = List.reverse . foldl' (flip (:)) []
 {-# INLINE toList #-}
 
 unionWith :: (Carry -> Carry -> Carry) -> Set -> Set -> Set
@@ -297,15 +293,14 @@ findMin wbs@(WordBitSet capacity ws) = go 0 capacity ws
   where
     go start span (Bin l r) =
       case l of
-        Const c | c == ambientBit -> go start' span' r
-        _ ->  go start span' l
+        Const False -> go start' span' r
+        _           -> go start  span' l
       where
         span'  = d2 span
         start' = start + span'
 
-    go start _span (Const c)
-      | c /= ambientBit = nbits * start
-      | otherwise = error $ "findMin: empty tree: " ++ show wbs
+    go  start _span (Const True ) = nbits * start
+    go _start _span (Const False) = error $ "findMin: empty tree: " ++ show wbs
 
     go start _span (Tip w)
       | w /= 0 = nbits * start + firstBit w
