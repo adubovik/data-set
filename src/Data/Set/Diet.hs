@@ -1,6 +1,5 @@
 {-# language
    ConstraintKinds
- , MultiWayIf
  , StandaloneDeriving
  , DeriveDataTypeable
  , BangPatterns
@@ -133,10 +132,10 @@ m1 \\ m2 = difference m1 m2
 --------------------------------------------------------------------}
 -- | A set of values @a@.
 
-data Diet a   = Bin !Int !(a,a) !(Diet a) !(Diet a)
-              | Tip
-type Set      = Diet
-type DietC a  = (Enum a, Ord a)
+data Diet a  = Bin !Int !(a,a) !(Diet a) !(Diet a)
+             | Tip
+type Set     = Diet
+type DietC a = (Enum a, Ord a)
 
 instance DietC a => Monoid (Diet a) where
     mempty  = empty
@@ -178,17 +177,16 @@ member :: DietC a => a -> Diet a -> Bool
 member = go
   where
     go _ Tip = False
-    go !a (Bin _ (x,y) l r) =
-      if | a < x -> go a l
-         | a <= y -> True
-         | otherwise -> go a r
+    go !a (Bin _ (x,y) l r)
+      | a < x     = go a l
+      | a <= y    = True
+      | otherwise = go a r
 {-# INLINABLE member #-}
 
 -- | /O(log n)/. Is the element not in the set?
 notMember :: DietC a => a -> Diet a -> Bool
 notMember a = not . member a
 {-# INLINABLE notMember #-}
-
 
 {--------------------------------------------------------------------
   Construction
@@ -226,10 +224,10 @@ insertInterval = go
     go :: DietC a => (a,a) -> Diet a -> Diet a
     go !i Tip = singletonInterval i
     go !i@(x,y) d@(Bin _ i'@(x',y') l r)
-      | succ y  < x' = bin i' (go i l) r
-      | succ y' < x  = bin i' l (go i r)
+      | succ y  < x' = topRebalance i' (go i l) r
+      | succ y' < x  = topRebalance i' l (go i r)
       | x' <= x && y <= y' = d
-      | otherwise = joinLeft . joinRight $ bin im l' r'
+      | otherwise = joinLeft . joinRight $ topRebalance im l' r'
         where
           im = (min x x', max y y')
           l' | x < x' = deleteInterval (x, pred x') l
@@ -242,24 +240,25 @@ bin :: (a,a) -> Diet a -> Diet a -> Diet a
 bin i l r = Bin (sizeInterval l + sizeInterval r + 1) i l r
 {-# INLINE bin #-}
 
-splitMax :: Diet a -> Maybe ((a,a), Diet a)
+splitMax :: DietC a => Diet a -> Maybe ((a,a), Diet a)
 splitMax (Bin _ i l r) = case splitMax r of
   Nothing       -> Just (i, l)
-  Just (i', r') -> Just (i', bin i l r')
+  Just (i', r') -> Just (i', deepRebalance i l r')
 splitMax Tip = Nothing
 
-splitMin :: Diet a -> Maybe ((a,a), Diet a)
+splitMin :: DietC a => Diet a -> Maybe ((a,a), Diet a)
 splitMin (Bin _ i l r) = case splitMin l of
   Nothing       -> Just (i, r)
-  Just (i', l') -> Just (i', bin i l' r)
+  Just (i', l') -> Just (i', deepRebalance i l' r)
 splitMin Tip = Nothing
 
 joinLeft :: DietC a => Diet a -> Diet a
 joinLeft d@(Bin _ (x,y) l r) = case splitMax l of
   Nothing -> d
   Just ((x',y'), l') ->
-    if | succ y' == x -> bin (x',y) l' r
-       | otherwise -> d
+    if (succ y' == x)
+    then deepRebalance (x',y) l' r
+    else d
 joinLeft Tip = Tip
 {-# INLINABLE joinLeft #-}
 
@@ -267,27 +266,29 @@ joinRight :: DietC a => Diet a -> Diet a
 joinRight d@(Bin _ (x,y) l r) = case splitMin r of
   Nothing -> d
   Just ((x',y'), r') ->
-    if | succ y == x' -> bin (x,y') l r'
-       | otherwise -> d
+    if (succ y == x')
+    then deepRebalance (x,y') l r'
+    else d
 joinRight Tip = Tip
 {-# INLINABLE joinRight #-}
 
-mergeRight :: Diet a -> Diet a -> Diet a
+mergeRight :: DietC a => Diet a -> Diet a -> Diet a
 mergeRight l r = case splitMin r of
   Nothing -> l
-  Just (i, r') -> bin i l r'
+  Just (i, r') -> deepRebalance i l r'
 {-# INLINABLE mergeRight #-}
 
-mergeLeft :: Diet a -> Diet a -> Diet a
+mergeLeft :: DietC a => Diet a -> Diet a -> Diet a
 mergeLeft l r = case splitMax l of
   Nothing -> r
-  Just (i, l') -> bin i l' r
+  Just (i, l') -> deepRebalance i l' r
 {-# INLINABLE mergeLeft #-}
 
 deleteInterval :: DietC a => (a,a) -> Diet a -> Diet a
 deleteInterval !(x,y) (Bin _ i'@(x',y') l r)
   | x  <= x' && y' <= y  = mergeRight l' r'
-  | x' <  x  && y  <  y' = bin (succ y, y') (bin (x', pred x) l Tip) r
+  | x' <  x  && y  <  y' = topRebalance (succ y, y')
+                             (topRebalance (x', pred x) l Tip) r
   | otherwise = bin i'' l' r'
   where
     i''
@@ -307,8 +308,59 @@ deleteInterval _ Tip = Tip
 
 -- See Note: Type of local 'go' function
 delete :: DietC a => a -> Diet a -> Diet a
-delete a = {-# SCC "Diet.delete" #-} deleteInterval (a,a)
+delete a = deleteInterval (a,a)
 {-# INLINABLE delete #-}
+
+{--------------------------------------------------------------------
+  Rebalancing logic
+--------------------------------------------------------------------}
+
+weight :: Int
+weight = 3
+
+deepRebalance :: DietC a => (a,a) -> Diet a -> Diet a -> Diet a
+deepRebalance v Tip r = insertInterval v r
+deepRebalance v l Tip = insertInterval v l
+deepRebalance v l@(Bin n1 v1 l1 r1) r@(Bin n2 v2 l2 r2)
+  | weight * n1 < n2 = topRebalance v2 (deepRebalance v l l2) r2
+  | weight * n2 < n1 = topRebalance v1 l1 (deepRebalance v r1 r)
+  | otherwise = bin v l r
+
+topRebalance :: (a,a) -> Diet a -> Diet a -> Diet a
+topRebalance v l r
+  | ln + rn < 2 = bin v l r
+  | rn > weight * ln =
+    let Bin _ _ rl rr = r
+        rln = sizeInterval rl
+        rrn = sizeInterval rr
+    in  if rln < rrn
+        then singleL v l r
+        else doubleL v l r
+  | ln > weight * rn =
+    let Bin _ _ ll lr = l
+        lln = sizeInterval ll
+        lrn = sizeInterval lr
+    in  if lrn < lln
+        then singleR v l r
+        else doubleR v l r
+  | otherwise = bin v l r
+  where
+    ln = sizeInterval l
+    rn = sizeInterval r
+
+singleL, singleR, doubleL, doubleR :: (a,a) -> Diet a -> Diet a -> Diet a
+
+singleL a x (Bin _ b y z) = bin b (bin a x y) z
+singleL a x y             = bin a x y
+
+singleR b (Bin _ a x y) z = bin a x (bin b y z)
+singleR a x y             = bin a x y
+
+doubleL a x (Bin _ c (Bin _ b y1 y2) z) = bin b (bin a x y1) (bin c y2 z)
+doubleL a x y = bin a x y
+
+doubleR c (Bin _ a x (Bin _ b y1 y2)) z = bin b (bin a x y1) (bin c y2 z)
+doubleR a x y = bin a x y
 
 {--------------------------------------------------------------------
   Minimal, Maximal
@@ -338,26 +390,26 @@ findMax = snd . findMaxInterval
 deleteMin :: DietC a => Diet a -> Diet a
 deleteMin (Bin _ (x,y) Tip r)
   | x == y = r
-  | otherwise = bin (succ x, y) Tip r
-deleteMin (Bin _ x l r) = bin x (deleteMin l) r
+  | otherwise = topRebalance (succ x, y) Tip r
+deleteMin (Bin _ x l r) = topRebalance x (deleteMin l) r
 deleteMin Tip           = Tip
 
 deleteMinInterval :: Diet a -> Diet a
 deleteMinInterval (Bin _ _ Tip r) = r
-deleteMinInterval (Bin _ x l r)   = bin x (deleteMinInterval l) r
+deleteMinInterval (Bin _ x l r)   = topRebalance x (deleteMinInterval l) r
 deleteMinInterval Tip             = Tip
 
 -- | /O(log n)/. Delete the maximal element. Returns an empty set if the set is empty.
 deleteMax :: DietC a => Diet a -> Diet a
 deleteMax (Bin _ (x,y) l Tip)
   | x == y = l
-  | otherwise = bin (x, pred y) l Tip
-deleteMax (Bin _ x l r)   = bin x l (deleteMax r)
+  | otherwise = topRebalance (x, pred y) l Tip
+deleteMax (Bin _ x l r)   = topRebalance x l (deleteMax r)
 deleteMax Tip             = Tip
 
 deleteMaxInterval :: Diet a -> Diet a
 deleteMaxInterval (Bin _ _ l Tip) = l
-deleteMaxInterval (Bin _ x l r)   = bin x l (deleteMaxInterval r)
+deleteMaxInterval (Bin _ x l r)   = topRebalance x l (deleteMaxInterval r)
 deleteMaxInterval Tip             = Tip
 
 {--------------------------------------------------------------------
@@ -611,7 +663,7 @@ instance (DietC a, Show a) => Show (Diet a) where
 {--------------------------------------------------------------------
   Read
 --------------------------------------------------------------------}
-instance (Read a, Ord a, Enum a) => Read (Diet a) where
+instance (Read a, DietC a) => Read (Diet a) where
   readPrec = parens $ prec 10 $ do
     Ident "fromList" <- lexP
     xs <- readPrec
@@ -637,15 +689,15 @@ deleteFindMin t
       Bin _ (x,y) Tip r ->
         if (succ x == y)
         then (x,r)
-        else (x, bin (succ x, y) Tip r)
-      Bin _ x l r -> let (xm,l') = deleteFindMin l in (xm, bin x l' r)
+        else (x, topRebalance (succ x, y) Tip r)
+      Bin _ x l r -> let (xm,l') = deleteFindMin l in (xm, topRebalance x l' r)
       Tip         -> (error "Set.deleteFindMin: can not return the minimal element of an empty set", Tip)
 
 deleteFindMinInterval :: Diet a -> ((a,a),Diet a)
 deleteFindMinInterval t
   = case t of
       Bin _ x Tip r -> (x,r)
-      Bin _ x l r   -> let (xm,l') = deleteFindMinInterval l in (xm, bin x l' r)
+      Bin _ x l r   -> let (xm,l') = deleteFindMinInterval l in (xm, topRebalance x l' r)
       Tip           -> (error "Set.deleteFindMinInterval: can not return the minimal element of an empty set", Tip)
 
 -- | /O(log n)/. Delete and find the maximal element.
@@ -657,15 +709,15 @@ deleteFindMax t
       Bin _ (x,y) l Tip ->
         if (succ x == y)
         then (x,l)
-        else (y, bin (x, pred y) l Tip)
-      Bin _ x l r -> let (xm,r') = deleteFindMax r in (xm, bin x l r')
+        else (y, topRebalance (x, pred y) l Tip)
+      Bin _ x l r -> let (xm,r') = deleteFindMax r in (xm, topRebalance x l r')
       Tip         -> (error "Set.deleteFindMax: can not return the maximal element of an empty set", Tip)
 
 deleteFindMaxInterval :: Diet a -> ((a,a),Diet a)
 deleteFindMaxInterval t
   = case t of
       Bin _ x l Tip -> (x,l)
-      Bin _ x l r   -> let (xm,r') = deleteFindMaxInterval r in (xm, bin x l r')
+      Bin _ x l r   -> let (xm,r') = deleteFindMaxInterval r in (xm, topRebalance x l r')
       Tip           -> (error "Set.deleteFindMaxInterval: can not return the maximal element of an empty set", Tip)
 
 -- | /O(log n)/. Retrieves the minimal key of the set, and the set

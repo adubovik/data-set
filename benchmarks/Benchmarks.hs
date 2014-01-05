@@ -113,17 +113,17 @@ main = do
                 B wordBitSetSolid, B wordBitSetSparse]
 
   defaultMain
-    [-- mkBench setInterface setSparse
-      mkBench intSetInterface intSetSparse
+    [ mkBench setInterface setSparse
+    --  mkBench intSetInterface intSetSparse
     -- , mkBench bitSetInterface bitSetSparse
-    -- , mkBench dietInterface dietSparse
-    , mkBench wordBitSetInterface wordBitSetSparse
+    , mkBench dietInterface dietSparse
+    --, mkBench wordBitSetInterface wordBitSetSparse
 
-    -- , mkBench setInterface setSolid
-    ,  mkBench intSetInterface intSetSolid
+    , mkBench setInterface setSolid
+    -- ,  mkBench intSetInterface intSetSolid
     -- , mkBench bitSetInterface bitSetSolid
-    -- , mkBench dietInterface dietSolid
-    , mkBench wordBitSetInterface wordBitSetSolid
+    , mkBench dietInterface dietSolid
+    -- , mkBench wordBitSetInterface wordBitSetSolid
     ]
 
 members :: DietC a => SetInterface f a -> [a] -> f -> Bool
