@@ -45,13 +45,13 @@ propConstruction it@SetInterface{..} (toInt -> xs) =
     xs'' = toList xs'
 
 propConstruction' :: SetInterface f Int -> Carry -> Carry -> Bool
-propConstruction' it@SetInterface{..} (unRI -> a) (unRI -> b) = ls == ls'
+propConstruction' SetInterface{..} (unRI -> a) (unRI -> b) = ls == ls'
   where
     ls  = [min a b .. max a b]
     ls' = List.sort . toList . fromList $ ls
 
 propFindMin :: SetInterface f Int -> Carry -> Carry -> Bool
-propFindMin it@SetInterface{..} (unRI -> a) (unRI -> b) = mn == mn'
+propFindMin SetInterface{..} (unRI -> a) (unRI -> b) = mn == mn'
   where
     mn  = min a b
     mn' = findMin . fromList $ [min a b .. max a b]

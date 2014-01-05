@@ -25,7 +25,7 @@ module Data.Set.Diet (
 
  -- * Query
  , null
- , size
+ , size, sizeInterval
  , member
  , notMember
  -- , lookupLT
@@ -133,7 +133,7 @@ m1 \\ m2 = difference m1 m2
 --------------------------------------------------------------------}
 -- | A set of values @a@.
 
-data Diet a   = Bin !(a,a) !(Diet a) !(Diet a)
+data Diet a   = Bin !Int !(a,a) !(Diet a) !(Diet a)
               | Tip
 type Set      = Diet
 type DietC a  = (Enum a, Ord a)
@@ -149,7 +149,7 @@ instance DietC a => Monoid (Diet a) where
 foldMapInterval :: Monoid m => ((a,a) -> m) -> Diet a -> m
 foldMapInterval f = go
   where go Tip = mempty
-        go (Bin k l r) = go l <> (f k <> go r)
+        go (Bin _ k l r) = go l <> (f k <> go r)
 {-# INLINE foldMapInterval #-}
 
 {--------------------------------------------------------------------
@@ -160,6 +160,10 @@ null :: Diet a -> Bool
 null Tip      = True
 null (Bin {}) = False
 {-# INLINE null #-}
+
+sizeInterval :: Diet a -> Int
+sizeInterval Tip = 0
+sizeInterval (Bin i _ _ _) = i
 
 -- | /O(n)/. The number of elements in the set.
 size :: DietC a => Diet a -> Int
@@ -174,7 +178,7 @@ member :: DietC a => a -> Diet a -> Bool
 member = go
   where
     go _ Tip = False
-    go !a (Bin (x,y) l r) =
+    go !a (Bin _ (x,y) l r) =
       if | a < x -> go a l
          | a <= y -> True
          | otherwise -> go a r
@@ -196,12 +200,12 @@ empty = Tip
 
 -- | /O(1)/. Create a singleton diet.
 singleton :: a -> Diet a
-singleton x = Bin (x,x) Tip Tip
+singleton x = Bin 1 (x,x) Tip Tip
 {-# INLINE singleton #-}
 
 -- | /O(1)/. Create a set with single interval.
 singletonInterval :: (a,a) -> Diet a
-singletonInterval i = Bin i Tip Tip
+singletonInterval i = Bin 1 i Tip Tip
 {-# INLINE singletonInterval #-}
 
 {--------------------------------------------------------------------
@@ -213,19 +217,19 @@ singletonInterval i = Bin i Tip Tip
 
 -- See Note: Type of local 'go' function
 insert :: DietC a => a -> Diet a -> Diet a
-insert a = {-# SCC "Diet.insert" #-} insertInterval (a,a)
+insert a = insertInterval (a,a)
 {-# INLINABLE insert #-}
 
 insertInterval :: DietC a => (a,a) -> Diet a -> Diet a
-insertInterval = {-# SCC "Diet.insertI" #-} go
+insertInterval = go
   where
     go :: DietC a => (a,a) -> Diet a -> Diet a
-    go !i Tip = {-# SCC "Diet.insertI1" #-} singletonInterval i
-    go !i@(x,y) d@(Bin i'@(x',y') l r)
-      | succ y  < x' = {-# SCC "Diet.insertI2" #-} Bin i' (go i l) r
-      | succ y' < x  = {-# SCC "Diet.insertI3" #-} Bin i' l (go i r)
+    go !i Tip = singletonInterval i
+    go !i@(x,y) d@(Bin _ i'@(x',y') l r)
+      | succ y  < x' = bin i' (go i l) r
+      | succ y' < x  = bin i' l (go i r)
       | x' <= x && y <= y' = d
-      | otherwise = {-# SCC "Diet.insert.joins" #-} joinLeft . joinRight $ Bin im l' r'
+      | otherwise = joinLeft . joinRight $ bin im l' r'
         where
           im = (min x x', max y y')
           l' | x < x' = deleteInterval (x, pred x') l
@@ -234,32 +238,36 @@ insertInterval = {-# SCC "Diet.insertI" #-} go
              | otherwise = r
 {-# INLINABLE insertInterval #-}
 
+bin :: (a,a) -> Diet a -> Diet a -> Diet a
+bin i l r = Bin (sizeInterval l + sizeInterval r + 1) i l r
+{-# INLINE bin #-}
+
 splitMax :: Diet a -> Maybe ((a,a), Diet a)
-splitMax (Bin i l r) = case splitMax r of
+splitMax (Bin _ i l r) = case splitMax r of
   Nothing       -> Just (i, l)
-  Just (i', r') -> Just (i', Bin i l r')
+  Just (i', r') -> Just (i', bin i l r')
 splitMax Tip = Nothing
 
 splitMin :: Diet a -> Maybe ((a,a), Diet a)
-splitMin (Bin i l r) = case splitMin l of
+splitMin (Bin _ i l r) = case splitMin l of
   Nothing       -> Just (i, r)
-  Just (i', l') -> Just (i', Bin i l' r)
+  Just (i', l') -> Just (i', bin i l' r)
 splitMin Tip = Nothing
 
 joinLeft :: DietC a => Diet a -> Diet a
-joinLeft d@(Bin (x,y) l r) = {-# SCC "Diet.joinLeft" #-} case splitMax l of
+joinLeft d@(Bin _ (x,y) l r) = case splitMax l of
   Nothing -> d
   Just ((x',y'), l') ->
-    if | succ y' == x -> Bin (x',y) l' r
+    if | succ y' == x -> bin (x',y) l' r
        | otherwise -> d
 joinLeft Tip = Tip
 {-# INLINABLE joinLeft #-}
 
 joinRight :: DietC a => Diet a -> Diet a
-joinRight d@(Bin (x,y) l r) = {-# SCC "Diet.joinRight" #-} case splitMin r of
+joinRight d@(Bin _ (x,y) l r) = case splitMin r of
   Nothing -> d
   Just ((x',y'), r') ->
-    if | succ y == x' -> Bin (x,y') l r'
+    if | succ y == x' -> bin (x,y') l r'
        | otherwise -> d
 joinRight Tip = Tip
 {-# INLINABLE joinRight #-}
@@ -267,20 +275,20 @@ joinRight Tip = Tip
 mergeRight :: Diet a -> Diet a -> Diet a
 mergeRight l r = case splitMin r of
   Nothing -> l
-  Just (i, r') -> Bin i l r'
+  Just (i, r') -> bin i l r'
 {-# INLINABLE mergeRight #-}
 
 mergeLeft :: Diet a -> Diet a -> Diet a
 mergeLeft l r = case splitMax l of
   Nothing -> r
-  Just (i, l') -> Bin i l' r
+  Just (i, l') -> bin i l' r
 {-# INLINABLE mergeLeft #-}
 
 deleteInterval :: DietC a => (a,a) -> Diet a -> Diet a
-deleteInterval !(x,y) (Bin i'@(x',y') l r)
-  | x  <= x' && y' <= y  = {-# SCC "Diet.deleteI.1" #-} mergeRight l' r'
-  | x' <  x  && y  <  y' = {-# SCC "Diet.deleteI.2" #-} Bin (succ y, y') (Bin (x', pred x) l Tip) r
-  | otherwise = {-# SCC "Diet.deleteI.3" #-} Bin i'' l' r'
+deleteInterval !(x,y) (Bin _ i'@(x',y') l r)
+  | x  <= x' && y' <= y  = mergeRight l' r'
+  | x' <  x  && y  <  y' = bin (succ y, y') (bin (x', pred x) l Tip) r
+  | otherwise = bin i'' l' r'
   where
     i''
       | y < x' || y' < x = i'
@@ -306,9 +314,9 @@ delete a = {-# SCC "Diet.delete" #-} deleteInterval (a,a)
   Minimal, Maximal
 --------------------------------------------------------------------}
 findMinInterval :: Diet a -> (a,a)
-findMinInterval (Bin x Tip _) = x
-findMinInterval (Bin _ l _)   = findMinInterval l
-findMinInterval Tip           = error "Diet.findMinInterval: empty set has no minimal interval"
+findMinInterval (Bin _ x Tip _) = x
+findMinInterval (Bin _ _ l _)   = findMinInterval l
+findMinInterval Tip             = error "Diet.findMinInterval: empty set has no minimal interval"
 
 -- | /O(log n)/. The minimal element of a set.
 findMin :: Diet a -> a
@@ -317,9 +325,9 @@ findMin = fst . findMinInterval
 
 -- | /O(log n)/. The maximal element of a set.
 findMaxInterval :: Diet a -> (a,a)
-findMaxInterval (Bin x _ Tip)  = x
-findMaxInterval (Bin _ _ r)    = findMaxInterval r
-findMaxInterval Tip            = error "Diet.findMaxInterval: empty set has no maximal interval"
+findMaxInterval (Bin _ x _ Tip)  = x
+findMaxInterval (Bin _ _ _ r)    = findMaxInterval r
+findMaxInterval Tip              = error "Diet.findMaxInterval: empty set has no maximal interval"
 
 -- | /O(log n)/. The minimal element of a set.
 findMax :: Diet a -> a
@@ -328,29 +336,29 @@ findMax = snd . findMaxInterval
 
 -- | /O(log n)/. Delete the minimal element. Returns an empty set if the set is empty.
 deleteMin :: DietC a => Diet a -> Diet a
-deleteMin (Bin (x,y) Tip r)
+deleteMin (Bin _ (x,y) Tip r)
   | x == y = r
-  | otherwise = Bin (succ x, y) Tip r
-deleteMin (Bin x l r)   = Bin x (deleteMin l) r
+  | otherwise = bin (succ x, y) Tip r
+deleteMin (Bin _ x l r) = bin x (deleteMin l) r
 deleteMin Tip           = Tip
 
 deleteMinInterval :: Diet a -> Diet a
-deleteMinInterval (Bin _ Tip r) = r
-deleteMinInterval (Bin x l r)   = Bin x (deleteMinInterval l) r
-deleteMinInterval Tip           = Tip
+deleteMinInterval (Bin _ _ Tip r) = r
+deleteMinInterval (Bin _ x l r)   = bin x (deleteMinInterval l) r
+deleteMinInterval Tip             = Tip
 
 -- | /O(log n)/. Delete the maximal element. Returns an empty set if the set is empty.
 deleteMax :: DietC a => Diet a -> Diet a
-deleteMax (Bin (x,y) l Tip)
+deleteMax (Bin _ (x,y) l Tip)
   | x == y = l
-  | otherwise = Bin (x, pred y) l Tip
-deleteMax (Bin x l r)   = Bin x l (deleteMax r)
-deleteMax Tip           = Tip
+  | otherwise = bin (x, pred y) l Tip
+deleteMax (Bin _ x l r)   = bin x l (deleteMax r)
+deleteMax Tip             = Tip
 
 deleteMaxInterval :: Diet a -> Diet a
-deleteMaxInterval (Bin _ l Tip) = l
-deleteMaxInterval (Bin x l r)   = Bin x l (deleteMaxInterval r)
-deleteMaxInterval Tip           = Tip
+deleteMaxInterval (Bin _ _ l Tip) = l
+deleteMaxInterval (Bin _ x l r)   = bin x l (deleteMaxInterval r)
+deleteMaxInterval Tip             = Tip
 
 {--------------------------------------------------------------------
   Union.
@@ -363,9 +371,9 @@ unions = foldlStrict union empty
 -- | /O(m * log(n))/. The union of two sets, preferring the first set when
 -- equal elements are encountered.
 union :: DietC a => Diet a -> Diet a -> Diet a
-union Tip t2  = t2
-union t1 Tip  = t1
-union t1 t2 = foldlInterval' (flip insertInterval) t1 t2
+union Tip t2 = t2
+union t1 Tip = t1
+union t1 t2  = foldlInterval' (flip insertInterval) t1 t2
 {-# INLINABLE union #-}
 
 {--------------------------------------------------------------------
@@ -441,12 +449,12 @@ mapInterval f = fromListInterval . List.map f . toListInterval
 
 mapMonotonic :: (a -> b) -> Diet a -> Diet b
 mapMonotonic _ Tip = Tip
-mapMonotonic f (Bin (x, y) l r) = Bin (f x, f y) (mapMonotonic f l) (mapMonotonic f r)
+mapMonotonic f (Bin _ (x,y) l r) = bin (f x, f y) (mapMonotonic f l) (mapMonotonic f r)
 
 mapMonotonicInterval :: ((a,a) -> (b,b)) -> Diet a -> Diet b
 mapMonotonicInterval _ Tip = Tip
-mapMonotonicInterval f (Bin i l r) =
-  Bin (f i) (mapMonotonicInterval f l) (mapMonotonicInterval f r)
+mapMonotonicInterval f (Bin _ i l r) =
+  bin (f i) (mapMonotonicInterval f l) (mapMonotonicInterval f r)
 
 {--------------------------------------------------------------------
   Fold
@@ -461,8 +469,8 @@ mapMonotonicInterval f (Bin i l r) =
 foldrInterval :: ((a,a) -> b -> b) -> b -> Diet a -> b
 foldrInterval f z = go z
   where
-    go z' Tip         = z'
-    go z' (Bin x l r) = go (f x (go z' r)) l
+    go z' Tip           = z'
+    go z' (Bin _ x l r) = go (f x (go z' r)) l
 {-# INLINE foldrInterval #-}
 
 foldr :: Enum a => (a -> b -> b) -> b -> Diet a -> b
@@ -475,8 +483,8 @@ foldr f = foldrInterval (\(x,y) b -> List.foldr f b (enumFromTo x y))
 foldrInterval' :: ((a,a) -> b -> b) -> b -> Diet a -> b
 foldrInterval' f z = go z
   where
-    go !z' Tip         = z'
-    go !z' (Bin x l r) = go (f x (go z' r)) l
+    go !z' Tip           = z'
+    go !z' (Bin _ x l r) = go (f x (go z' r)) l
 {-# INLINE foldrInterval' #-}
 
 foldr' :: Enum a => (a -> b -> b) -> b -> Diet a -> b
@@ -492,8 +500,8 @@ foldr' f = foldrInterval' (\(x,y) b -> List.foldr f b (enumFromTo x y))
 foldlInterval :: (a -> (b,b) -> a) -> a -> Diet b -> a
 foldlInterval f z = go z
   where
-    go z' Tip         = z'
-    go z' (Bin x l r) = go (f (go z' l) x) r
+    go z' Tip           = z'
+    go z' (Bin _ x l r) = go (f (go z' l) x) r
 {-# INLINE foldlInterval #-}
 
 foldl :: Enum b => (a -> b -> a) -> a -> Diet b -> a
@@ -506,8 +514,8 @@ foldl f = foldlInterval (\a (x,y) -> List.foldl f a (enumFromTo x y))
 foldlInterval' :: (a -> (b,b) -> a) -> a -> Diet b -> a
 foldlInterval' f z = go z
   where
-    go !z' Tip         = z'
-    go !z' (Bin x l r) = go (f (go z' l) x) r
+    go !z' Tip           = z'
+    go !z' (Bin _ x l r) = go (f (go z' l) x) r
 {-# INLINE foldlInterval' #-}
 
 foldl' :: Enum b => (a -> b -> a) -> a -> Diet b -> a
@@ -556,7 +564,7 @@ fromListInterval = go . List.sort
   where
     go [] = Tip
     go [x] = singletonInterval x
-    go xs = Bin m (fromListInterval l) (fromListInterval r)
+    go xs  = bin m (fromListInterval l) (fromListInterval r)
       where
         (l,m:r) = splitAt ((length xs) `div` 2) xs
 {-# INLINABLE fromListInterval #-}
@@ -616,8 +624,8 @@ instance (Read a, Ord a, Enum a) => Read (Diet a) where
 --------------------------------------------------------------------}
 
 instance NFData a => NFData (Diet a) where
-    rnf Tip         = ()
-    rnf (Bin y l r) = rnf y `seq` rnf l `seq` rnf r
+    rnf Tip           = ()
+    rnf (Bin i y l r) = rnf i `seq` rnf y `seq` rnf l `seq` rnf r
 
 -- | /O(log n)/. Delete and find the minimal element.
 --
@@ -626,19 +634,19 @@ instance NFData a => NFData (Diet a) where
 deleteFindMin :: DietC a => Diet a -> (a,Diet a)
 deleteFindMin t
   = case t of
-      Bin (x,y) Tip r ->
+      Bin _ (x,y) Tip r ->
         if (succ x == y)
         then (x,r)
-        else (x, Bin (succ x, y) Tip r)
-      Bin x l r   -> let (xm,l') = deleteFindMin l in (xm, Bin x l' r)
+        else (x, bin (succ x, y) Tip r)
+      Bin _ x l r -> let (xm,l') = deleteFindMin l in (xm, bin x l' r)
       Tip         -> (error "Set.deleteFindMin: can not return the minimal element of an empty set", Tip)
 
 deleteFindMinInterval :: Diet a -> ((a,a),Diet a)
 deleteFindMinInterval t
   = case t of
-      Bin x Tip r -> (x,r)
-      Bin x l r   -> let (xm,l') = deleteFindMinInterval l in (xm, Bin x l' r)
-      Tip         -> (error "Set.deleteFindMinInterval: can not return the minimal element of an empty set", Tip)
+      Bin _ x Tip r -> (x,r)
+      Bin _ x l r   -> let (xm,l') = deleteFindMinInterval l in (xm, bin x l' r)
+      Tip           -> (error "Set.deleteFindMinInterval: can not return the minimal element of an empty set", Tip)
 
 -- | /O(log n)/. Delete and find the maximal element.
 --
@@ -646,19 +654,19 @@ deleteFindMinInterval t
 deleteFindMax :: DietC a => Diet a -> (a,Diet a)
 deleteFindMax t
   = case t of
-      Bin (x,y) l Tip ->
+      Bin _ (x,y) l Tip ->
         if (succ x == y)
         then (x,l)
-        else (y, Bin (x, pred y) l Tip)
-      Bin x l r   -> let (xm,r') = deleteFindMax r in (xm, Bin x l r')
+        else (y, bin (x, pred y) l Tip)
+      Bin _ x l r -> let (xm,r') = deleteFindMax r in (xm, bin x l r')
       Tip         -> (error "Set.deleteFindMax: can not return the maximal element of an empty set", Tip)
 
 deleteFindMaxInterval :: Diet a -> ((a,a),Diet a)
 deleteFindMaxInterval t
   = case t of
-      Bin x l Tip -> (x,l)
-      Bin x l r   -> let (xm,r') = deleteFindMaxInterval r in (xm, Bin x l r')
-      Tip         -> (error "Set.deleteFindMaxInterval: can not return the maximal element of an empty set", Tip)
+      Bin _ x l Tip -> (x,l)
+      Bin _ x l r   -> let (xm,r') = deleteFindMaxInterval r in (xm, bin x l r')
+      Tip           -> (error "Set.deleteFindMaxInterval: can not return the maximal element of an empty set", Tip)
 
 -- | /O(log n)/. Retrieves the minimal key of the set, and the set
 -- stripped of that element, or 'Nothing' if passed an empty set.
@@ -744,9 +752,9 @@ showsTree :: Show a => Bool -> [String] -> [String] -> Diet a -> ShowS
 showsTree wide lbars rbars t
   = case t of
       Tip -> showsBars lbars . showString "|\n"
-      Bin x Tip Tip
+      Bin _ x Tip Tip
           -> showsBars lbars . shows x . showString "\n"
-      Bin x l r
+      Bin _ x l r
           -> showsTree wide (withBar rbars) (withEmpty rbars) r .
              showWide wide rbars .
              showsBars lbars . shows x . showString "\n" .
@@ -757,9 +765,9 @@ showsTreeHang :: Show a => Bool -> [String] -> Diet a -> ShowS
 showsTreeHang wide bars t
   = case t of
       Tip -> showsBars bars . showString "|\n"
-      Bin x Tip Tip
+      Bin _ x Tip Tip
           -> showsBars bars . shows x . showString "\n"
-      Bin x l r
+      Bin _ x l r
           -> showsBars bars . shows x . showString "\n" .
              showWide wide bars .
              showsTreeHang wide (withBar bars) l .
@@ -799,7 +807,7 @@ ordered t
     bounded lo hi t'
       = case t' of
           Tip           -> True
-          Bin (x,y) l r -> lo x &&
-                           hi y &&
-                           bounded lo (< pred x) l &&
-                           bounded (> succ x) hi r
+          Bin _ (x,y) l r -> lo x &&
+                             hi y &&
+                             bounded lo (< pred x) l &&
+                             bounded (> succ x) hi r
