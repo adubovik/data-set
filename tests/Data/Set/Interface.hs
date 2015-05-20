@@ -1,23 +1,29 @@
 {-# language
    ConstraintKinds
+ , CPP
  #-}
 
-module Data.Set.SetInterface(
-   SetInterface(..)
+module Data.Set.Interface(
+   Interface(..)
  , dietInterface
  , setInterface
  , intSetInterface
- , bitSetInterface
  , wordBitSetInterface
+#ifdef BITSET
+ , bitSetInterface
+#endif
 ) where
 
 import qualified Data.Set as ST
 import qualified Data.IntSet as IS
-import qualified Data.BitSet as BS
 import qualified Data.Set.Diet as DI
 import qualified Data.Set.WordBitSet as WB
 
-data SetInterface f a = SetInterface
+#ifdef BITSET
+import qualified Data.BitSet as BS
+#endif
+
+data Interface f a = Interface
   { fromList :: [a] -> f
   , toList :: f -> [a]
   , empty :: f
@@ -31,8 +37,8 @@ data SetInterface f a = SetInterface
   , confName :: String
   }
 
-wordBitSetInterface :: SetInterface WB.Set Int
-wordBitSetInterface = SetInterface
+wordBitSetInterface :: Interface WB.Set Int
+wordBitSetInterface = Interface
   { fromList     = WB.fromList
   , toList       = WB.toList
   , empty        = WB.empty
@@ -50,8 +56,8 @@ wordBitSetInterface = SetInterface
   , confName     = "Data.Set.WordBitSet"
   }
 
-dietInterface :: DI.DietC a => SetInterface (DI.Set a) a
-dietInterface = SetInterface
+dietInterface :: DI.DietC a => Interface (DI.Set a) a
+dietInterface = Interface
   { fromList     = DI.fromList
   , toList       = DI.toList
   , empty        = DI.empty
@@ -69,8 +75,8 @@ dietInterface = SetInterface
   , confName     = "Data.Set.Diet"
   }
 
-setInterface :: Ord a => SetInterface (ST.Set a) a
-setInterface = SetInterface
+setInterface :: Ord a => Interface (ST.Set a) a
+setInterface = Interface
   { fromList     = ST.fromList
   , toList       = ST.toList
   , empty        = ST.empty
@@ -88,8 +94,8 @@ setInterface = SetInterface
   , confName     = "Data.Set"
   }
 
-intSetInterface :: SetInterface IS.IntSet Int
-intSetInterface = SetInterface
+intSetInterface :: Interface IS.IntSet Int
+intSetInterface = Interface
   { fromList     = IS.fromList
   , toList       = IS.toList
   , empty        = IS.empty
@@ -107,8 +113,9 @@ intSetInterface = SetInterface
   , confName     = "Data.IntSet"
   }
 
-bitSetInterface :: SetInterface (BS.BitSet Int) Int
-bitSetInterface = SetInterface
+#ifdef BITSET
+bitSetInterface :: Interface (BS.BitSet Int) Int
+bitSetInterface = Interface
   { fromList     = BS.fromList
   , toList       = BS.toList
   , empty        = BS.empty
@@ -125,3 +132,4 @@ bitSetInterface = SetInterface
   , findMin      = error "bitSetInterface: findMin isn't implemented."
   , confName     = "Data.BitSet"
   }
+#endif

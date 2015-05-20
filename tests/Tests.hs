@@ -7,7 +7,7 @@
 
 module Main(main) where
 
-import Data.Set.SetInterface
+import Data.Set.Interface
 
 import qualified Data.List as List
 import Data.Monoid(mempty)
@@ -30,34 +30,34 @@ type Carry = RInt
 toInt :: [Carry] -> [Int]
 toInt = fmap unRI
 
-equalSets :: Eq a => SetInterface f a -> [a] -> f -> Bool
-equalSets SetInterface{..} ls ds =
+equalSets :: Eq a => Interface f a -> [a] -> f -> Bool
+equalSets Interface{..} ls ds =
   all (`member` ds) ls &&
   all (`List.elem` ls) (toList ds) &&
   valid ds
 
-propConstruction :: SetInterface f Int -> [Carry] -> Bool
-propConstruction it@SetInterface{..} (toInt -> xs) =
+propConstruction :: Interface f Int -> [Carry] -> Bool
+propConstruction it@Interface{..} (toInt -> xs) =
   equalSets it xs   xs' &&
   equalSets it xs'' xs'
   where
     xs'  = fromList xs
     xs'' = toList xs'
 
-propConstruction' :: SetInterface f Int -> Carry -> Carry -> Bool
-propConstruction' SetInterface{..} (unRI -> a) (unRI -> b) = ls == ls'
+propConstruction' :: Interface f Int -> Carry -> Carry -> Bool
+propConstruction' Interface{..} (unRI -> a) (unRI -> b) = ls == ls'
   where
     ls  = [min a b .. max a b]
     ls' = List.sort . toList . fromList $ ls
 
-propFindMin :: SetInterface f Int -> Carry -> Carry -> Bool
-propFindMin SetInterface{..} (unRI -> a) (unRI -> b) = mn == mn'
+propFindMin :: Interface f Int -> Carry -> Carry -> Bool
+propFindMin Interface{..} (unRI -> a) (unRI -> b) = mn == mn'
   where
     mn  = min a b
     mn' = findMin . fromList $ [min a b .. max a b]
 
-propIntersection :: SetInterface f Int -> [Carry] -> Bool
-propIntersection it@SetInterface{..} (toInt -> xs) =
+propIntersection :: Interface f Int -> [Carry] -> Bool
+propIntersection it@Interface{..} (toInt -> xs) =
   equalSets it i' i &&
   all (`member` i) (l `List.intersect` r) &&
   all (`notMember` i) (dl `List.union` dr)
@@ -71,8 +71,8 @@ propIntersection it@SetInterface{..} (toInt -> xs) =
     i' = l `List.intersect` r
     i = (fromList l) `intersection` (fromList r)
 
-propUnion :: SetInterface f Int -> [Carry] -> Bool
-propUnion it@SetInterface{..} (toInt -> xs) = equalSets it u i
+propUnion :: Interface f Int -> [Carry] -> Bool
+propUnion it@Interface{..} (toInt -> xs) = equalSets it u i
   where
     n = length xs
     (l, r) = splitAt (n `div` 2) $ List.nub xs
@@ -80,8 +80,8 @@ propUnion it@SetInterface{..} (toInt -> xs) = equalSets it u i
     i = (fromList l) `union` (fromList r)
     u = l `List.union` r
 
-propDifference :: SetInterface f Int -> [Carry] -> Bool
-propDifference it@SetInterface{..} (toInt -> xs) = equalSets it l l'
+propDifference :: Interface f Int -> [Carry] -> Bool
+propDifference it@Interface{..} (toInt -> xs) = equalSets it l l'
   where
     n = length xs
     (l, r) = splitAt (n `div` 2) $ List.nub xs
@@ -97,7 +97,7 @@ main = defaultMain tests
             , testGroup "Data.Set.WordBitSet" testWordBitSet
             ]
 
-    testOpt = mempty { topt_maximum_generated_tests = Just 10000 }
+    testOpt = mempty { topt_maximum_generated_tests = Just 1000 }
 
     testDiet :: [Test]
     testDiet =
